@@ -8,11 +8,11 @@ import numpy as np
 
 
 def weight(shape):
-    return np.random.normal(loc=0, scale=1, size=shape)
+    return np.random.normal(loc=0, scale=3, size=shape)
 
 
 def bias(shape):
-    return np.random.normal(loc=0, scale=0.5, size=shape)
+    return np.random.normal(loc=0, scale=2, size=shape)
 
 
 def sigmoid(x):
@@ -62,9 +62,12 @@ def distance(pos0, pos1):
     return math.sqrt((pos0[0] - pos1[0])**2 + (pos0[1] - pos1[1])**2)
 
 
-def make_population_dna(population_count):
+def make_population_dna(population_count, brain_num=0):
     """ returns random dna for a population of length 'population_count' """
-    return [([weight([2, 5]), weight([5, 1])], [bias([5]), bias([1])]) for i in xrange(population_count)]
+    if brain_num == 0:
+        return [([weight([2, 5]), weight([5, 1])], [bias([5]), bias([1])]) for i in xrange(population_count)]
+    elif brain_num == 1:
+        return [([weight([3, 6]), weight([6, 1])], [bias([6]), bias([1])]) for i in xrange(population_count)]
 
 
 def make_population(game_size, p_dna):
@@ -91,17 +94,46 @@ class Player:
         self.game_width = game_size[0]
         self.points = 0
 
-    def brain(self, x_dist, y_dist):
-        """The player's brain, a small neural network that returns the speed along which the paddle will move along x"""
+    def brain0(self, x_dist, y_dist):
+        """ One of the player's possible brains. It takes as input the distances from the ball along x and y and returns either a
+        positive or negative speed.
+        input_shape = [1, 2] """
         input = np.reshape(np.array([x_dist, y_dist]), [1, 2]).astype(np.float32)
 
         layer0 = sigmoid(np.matmul(input, self.weights[0]) + self.biases[0])
-        output = np.matmul(layer0, self.weights[1] + self.biases[1])
-        return output
+        output = np.matmul(layer0, self.weights[1]) + self.biases[1]
 
-    def update(self, x_dist, y_dist):
+        if output > 0:
+            speed = 8
+        else:
+            speed = -8
+
+        return speed
+
+    def brain1(self, ball_x, ball_y):
+        """ One of the player's possible brains. It takes as input the ball's coordinates and also the paddle's x coordinate (although
+        not through the function).
+        input_shape = [1, 3] """
+        input = np.reshape(np.array([ball_x, ball_y, self.x]), [1, 3]).astype(np.float32)
+
+        layer0 = sigmoid(np.matmul(input, self.weights[0]) + self.biases[0])
+        output = np.matmul(layer0, self.weights[1]) + self.biases[1]
+
+        if output > 0:
+            speed = 8
+        else:
+            speed = -8
+
+        return speed
+
+    def update(self, ball_x, ball_y):
         self.rect = pygame.Rect(int(self.x), int(self.y), 80, 10)
-        self.x += self.brain(x_dist, y_dist)
+
+        """x_dist = ball_x - self.x
+        y_dist = self.y - ball_y
+        self.x += self.brain0(x_dist, y_dist)"""
+
+        self.x += self.brain1(ball_x, ball_y)
 
         # if the player goes to one edge of the screen, it will reappear on the other side, like Pac-man
         if self.x > self.game_width:
@@ -140,6 +172,7 @@ class Ball:
         self.x, self.y = x, y
         self.game_width, self.game_height = game_width, game_height
         self.x_speed, self.y_speed = 7, 7
+        self.direction = 'down'
         self.rect = pygame.Rect(x, y, 20, 20)
 
     def update(self):
@@ -153,12 +186,17 @@ class Ball:
         elif self.x > self.game_width or self.x < 0:
             self.x_speed *= -1
 
+        if self.y_speed > 0:
+            self.direction = 'down'
+        else:
+            self.direction = 'up'
+
     def render(self, surface):
         pygame.draw.rect(surface, (255, 255, 255), (self.x, self.y, 20, 20))
 
 
 pygame.init()
-FPS = 10000
+FPS = 30
 clock = pygame.time.Clock()
 width, height = 500, 700
 
@@ -171,7 +209,7 @@ ball = Ball(350, 250, width, height)
 bounced = False         # a boolean to ensure the ball doesn't get stuck on the paddles
 
 population_count = 20
-population_dna = make_population_dna(population_count)
+population_dna = make_population_dna(population_count, brain_num=1)
 new_population_dna = []
 
 population = make_population(game_size, population_dna)
@@ -192,6 +230,12 @@ while True:
             elif event.key == pygame.K_RIGHT:
                 player_x_speed = 13
 
+            if event.key == pygame.K_SPACE:
+                if FPS == 30:
+                    FPS = 1e4
+                else:
+                    FPS = 30
+
         if event.type == pygame.KEYUP:
             if event.key == pygame.K_LEFT or event.key == pygame.K_RIGHT:
                 player_x_speed = 0
@@ -207,7 +251,10 @@ while True:
     if p_index >= population_count:
         generation += 1
         """ one generation is over, making the next one """
-        print 'Making generation ', generation
+        print 'Making generation', generation
+        print 'Scores: ', scores
+        print 'Average score: ', np.mean(np.array(scores))
+        print 'Best score: ', max(scores)
 
         population = []
         new_population_dna = []
@@ -224,24 +271,16 @@ while True:
         p_index = 0
 
     # handling hits
-    if ball.rect.colliderect(population[p_index].rect) and ball.y < population[p_index].y:
+    if ball.rect.colliderect(population[p_index].rect) and ball.direction == 'down':
         ball.y_speed *= -1
         population[p_index].points += 1
-        bounced = True
 
-    elif ball.rect.colliderect(auto_player.rect) and not bounced:
+    elif ball.rect.colliderect(auto_player.rect) and ball.direction == 'up':
         ball.y_speed *= -1
         auto_player.points += 1
-        bounced = True
-
-    else:
-        bounced = False
-
-    x_dist = population[p_index].x - ball.x      # the distance between the player and the ball along x
-    y_dist = population[p_index].y - ball.y      # same but along y
 
     auto_player.update(ball.x)
-    population[p_index].update(x_dist, y_dist)
+    population[p_index].update(ball.x, ball.y)
     ball.update()
 
     surface.fill((230, 0, 0))
