@@ -1,21 +1,21 @@
-""" This is the same as GeneticPong.py, but it has an additional 'brain' (brain2). This is a convolutional network and it
-takes as input a greyscale screeenshot of the game. It uses Tensorflow for convolution and pooling, although it sould probably
-be implemented in numpy, but this was faster to code for now. """
+""" Same as GeneticPong.py, but has an extra brain that uses convolution """
 from __future__ import division
 import math
 import random
 import pygame
 import numpy as np
-import tensorflow as tf
 from PIL import Image
+import time
+import scipy.signal as s
 
 
 def conv2d(x, W):
-    return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
+    # return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
+    return s.convolve2d(x, W, 'same')
 
 
-def max_pool(x):
-    return tf.nn.max_pool(x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
+# def max_pool(x):
+#     return tf.nn.max_pool(x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
 
 
 def weight(shape):
@@ -81,8 +81,8 @@ def make_population_dna(population_count, brain_num=0):
     elif brain_num == 1:
         return [([weight([3, 6]), weight([6, 1])], [bias([6]), bias([1])]) for i in xrange(population_count)]
     elif brain_num == 2:
-        return [([weight([5, 5, 1, 50]), weight([25*35*50, 40]), weight([40, 2])],
-                 [bias([50]), bias([40]), bias([2])]) for i in xrange(population_count)]
+        return [([weight([5, 5]), weight([50*70, 40]), weight([40, 2])],
+                 [bias([70]), bias([40]), bias([2])]) for i in xrange(population_count)]
 
 
 def make_population(game_size, p_dna):
@@ -92,7 +92,9 @@ def make_population(game_size, p_dna):
 
 def screenshot(surface):
     """ returns a greyscale screenshot of the current surface """
-    return np.array(Image.frombytes("RGB", (500, 700), pygame.image.tostring(surface, "RGB", False)).convert('L')).astype(np.float32)
+    img = np.array(Image.frombytes("RGB", (500, 700), pygame.image.tostring(surface, "RGB", False)).convert('L')).astype(np.float32)
+    # tiem = 0.00x
+    return img
 
 
 class Player:
@@ -102,16 +104,13 @@ class Player:
          dna = ([w0, w1], [b0, b1]) """
 
         self.x, self.y = random.randint(0, game_size[0]), game_size[1] - 100
-        self.rect = pygame.Rect(self.x, self.y, 80, 10)
+        self.rect = pygame.Rect(self.x, self.y, 100, 30)
 
         self.weights = dna[0]
         self.biases = dna[1]
 
         self.game_width, self.game_height = game_size[0], game_size[1]
         self.points = 0
-
-        self.sess = tf.Session()
-        self.sess.run(tf.global_variables_initializer())
 
     def brain0(self, x_dist, y_dist):
         """ One of the player's possible brains. It takes as input the distances from the ball along x and y and returns either a
@@ -148,27 +147,23 @@ class Player:
     def brain2(self, img):
         """ img: an np.array greyscale image of the screen """
         img = np.resize(img, [int(self.game_width / 10), int(self.game_height / 10)])
-        img = np.reshape(img, [1, img.shape[0], img.shape[1], 1])
 
-        conv0 = tf.nn.sigmoid(conv2d(img, self.weights[0]) + self.biases[0])
-        conv0_pool = max_pool(conv0)
-        conv0_flat = np.reshape(self.sess.run(conv0_pool),
-                                [conv0_pool.shape[1] * conv0_pool.shape[2] * conv0_pool.shape[3]])
+        conv0 = sigmoid(conv2d(img, self.weights[0]) + self.biases[0])
+        conv0_flat = np.reshape(conv0, [conv0.shape[0] * conv0.shape[1]])
 
         fc0 = sigmoid(np.matmul(conv0_flat, self.weights[1]) + self.biases[1])
         output = np.matmul(fc0, self.weights[2]) + self.biases[2]
 
-        print output
-        
         if output[0] > output[1]:
             speed = -8
         else:
             speed = +8
 
+        # time = 0.0x
         return speed
 
     def update(self, ball_x, ball_y, surface):
-        self.rect = pygame.Rect(int(self.x), int(self.y), 80, 10)
+        self.rect = pygame.Rect(int(self.x), int(self.y), 100, 30)
 
         """x_dist = ball_x - self.x
         y_dist = self.y - ball_y
@@ -184,7 +179,7 @@ class Player:
             self.x = self.game_width
 
     def render(self, surface):
-        pygame.draw.rect(surface, (255, 255, 255), self.rect)
+        pygame.draw.rect(surface, (0, 0, 0), self.rect)
 
 
 class AutoPlayer:
@@ -193,11 +188,11 @@ class AutoPlayer:
         self.x, self.y = x, y
         self.x_speed = 10
         self.game_width = game_width
-        self.rect = pygame.Rect(x, y, 80, 10)
+        self.rect = pygame.Rect(x, y, 100, 30)
         self.points = 0
 
     def update(self, ball_x):
-        self.rect = pygame.Rect(self.x, self.y, 80, 10)
+        self.rect = pygame.Rect(self.x, self.y, 100, 30)
 
         if ball_x > self.x:
             self.x += self.x_speed
@@ -205,7 +200,7 @@ class AutoPlayer:
             self.x -= self.x_speed
 
     def render(self, surface):
-        pygame.draw.rect(surface, (255, 255, 255), self.rect)
+        pygame.draw.rect(surface, (0, 0, 0), self.rect)
 
 
 class Ball:
@@ -234,7 +229,7 @@ class Ball:
             self.direction = 'up'
 
     def render(self, surface):
-        pygame.draw.rect(surface, (255, 255, 255), (self.x, self.y, 20, 20))
+        pygame.draw.rect(surface, (0, 0, 0), (self.x, self.y, 30, 30))
 
 
 pygame.init()
@@ -325,7 +320,7 @@ while True:
     population[p_index].update(ball.x, ball.y, surface)
     ball.update()
 
-    surface.fill((230, 0, 0))
+    surface.fill((255, 255, 255))
     population[p_index].render(surface)
     auto_player.render(surface)
     ball.render(surface)
