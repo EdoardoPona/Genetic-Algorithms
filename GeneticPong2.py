@@ -1,5 +1,6 @@
-""" This program should learn to play pong on its own. It still hasn't been tested so I don't know how long it takes to learn,
-of if it even works """
+""" This is the same as GeneticPong.py, but it has an additional 'brain' (brain2). This is a convolutional network and it
+takes as input a greyscale screeenshot of the game. It uses Tensorflow for convolution and pooling, although it sould probably
+be implemented in numpy, but this was faster to code for now. """
 from __future__ import division
 import math
 import random
