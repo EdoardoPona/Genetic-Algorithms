@@ -1,3 +1,4 @@
+""" A genetic algorithm that evolves agents that 'eat' things """
 from __future__ import division
 import pygame
 import random
